@@ -1,0 +1,59 @@
+name: ⏳ SSHX VM with Auto Backup (6 Hour Runtime)
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"  # Every 6 hours
+  workflow_dispatch:
+
+jobs:
+  sshx-vm:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: ⬇️ Checkout Repo
+        uses: actions/checkout@v3
+
+      - name: 💻 Install SSHX CLI
+        run: |
+          curl -s https://sh.sshx.io/install | bash
+
+      - name: 🔐 Configure Git for Backup
+        run: |
+          git config --global user.name "Auto Backup"
+          git config --global user.email "actions@github.com"
+
+      - name: 📁 Create /vmdata Folder
+        run: |
+          sudo mkdir -p /vmdata
+          sudo chmod 777 /vmdata
+
+      - name: ♻️ Restore Old Backup (if any)
+        run: |
+          git fetch origin vm-data
+          git checkout vm-data || git checkout --orphan vm-data
+          if [ -d "vmdata" ]; then
+            sudo cp -r vmdata/* /vmdata/ || true
+          fi
+          git checkout main
+
+      - name: 🚀 Start SSHX VM
+        run: |
+          sshx --name "ZothyBackupVM" --runtime 6h &
+          sleep 15
+          sshx info
+
+      - name: ⏳ Keep VM Alive for 6 Hours
+        run: |
+          echo "Sleeping 6 hours while VM runs..."
+          sleep 21600
+
+      - name: 💾 Backup /vmdata to vm-data branch
+        run: |
+          git fetch origin
+          git checkout vm-data || git checkout --orphan vm-data
+          rm -rf vmdata
+          mkdir -p vmdata
+          sudo cp -r /vmdata/* vmdata/ || true
+          git add vmdata
+          git commit -m "💾 Backup VM data on $(date)"
+          git push origin vm-data --force
